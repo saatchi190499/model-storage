@@ -1,0 +1,16 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: file-storage-api
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    volumes:
+      - file_data:/app/files
+    restart: unless-stopped
+
+volumes:
+  file_data:

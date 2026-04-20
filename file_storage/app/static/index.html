@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Model Storage</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Source+Code+Pro:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/ui/styles.css" />
+</head>
+<body>
+  <main class="desktop-layout">
+    <section class="workspace panel">
+      <div class="workspace-meta">
+        <div>Status: <strong id="title-context">Select field</strong></div>
+        <div>Selected Field: <strong id="selected-field">none</strong></div>
+        <div>Selected Project: <strong id="selected-project">none</strong></div>
+      </div>
+      <div class="workspace-main">
+        <section class="folder-pane">
+          <div class="panel-header">Folder Tree</div>
+          <div class="folder-toolbar">
+            <button class="mini-btn mini-btn-icon" data-action="new-field" title="Add Field" aria-label="Add Field">F+</button>
+            <button class="mini-btn mini-btn-icon" data-action="delete-field" title="Delete Field" aria-label="Delete Field">F-</button>
+            <button class="mini-btn mini-btn-icon hidden" data-role="project-action" data-action="new-project" title="Add Project" aria-label="Add Project">P+</button>
+            <button class="mini-btn mini-btn-icon hidden" data-role="project-action" data-action="delete-project" title="Delete Project" aria-label="Delete Project">P-</button>
+          </div>
+          <ul id="tree-view" class="tree-view"></ul>
+        </section>
+
+        <section class="file-pane">
+          <div class="file-toolbar">
+            <button class="mini-btn" data-action="navigate-up-folder">Up Folder</button>
+            <button class="mini-btn" data-action="upload-commit">Check In</button>
+            <button class="mini-btn" data-action="export-selected-version">Export Selected Commit Version</button>
+          </div>
+          <div class="table-wrap">
+            <table class="file-table">
+              <thead>
+                <tr>
+                  <th>Id</th>
+                  <th>File Name</th>
+                  <th>File Format</th>
+                  <th>Updated At</th>
+                </tr>
+              </thead>
+              <tbody id="files-table-body"></tbody>
+            </table>
+          </div>
+          <div class="table-foot" id="table-foot">Items: 0</div>
+          <div class="panel-header">File Versions (Selected File)</div>
+          <div class="table-wrap">
+            <table class="file-table">
+              <thead>
+                <tr>
+                  <th>File Version ID</th>
+                  <th>Version</th>
+                  <th>Commit ID</th>
+                  <th>Size</th>
+                </tr>
+              </thead>
+              <tbody id="file-versions-table-body"></tbody>
+            </table>
+          </div>
+          <div class="table-foot" id="file-versions-foot">File Versions: 0</div>
+          <div class="panel-header">Commit Versions</div>
+          <div class="table-wrap">
+            <table class="file-table">
+              <thead>
+                <tr>
+                  <th>Commit ID</th>
+                  <th>Message</th>
+                  <th>Updated By</th>
+                  <th>Complete</th>
+                  <th>Created At</th>
+                </tr>
+              </thead>
+              <tbody id="versions-table-body"></tbody>
+            </table>
+          </div>
+          <div class="table-foot" id="versions-foot">Versions: 0</div>
+        </section>
+      </div>
+    </section>
+
+    <section class="log-panel panel">
+      <div class="panel-header">Log</div>
+      <div class="table-wrap">
+        <table class="log-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Level</th>
+              <th>Message</th>
+            </tr>
+          </thead>
+          <tbody id="log-body"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <input id="zip-file-input" type="file" accept=".zip" class="hidden-input" />
+
+  <div id="dialog-backdrop" class="dialog-backdrop hidden">
+    <form id="action-dialog" class="action-dialog">
+      <div class="dialog-title" id="dialog-title">Action</div>
+      <div id="dialog-fields" class="dialog-fields"></div>
+      <div class="dialog-actions">
+        <button type="submit" class="mini-btn primary">Run</button>
+        <button type="button" class="mini-btn" id="dialog-cancel">Cancel</button>
+      </div>
+    </form>
+  </div>
+
+  <aside id="toast" class="toast hidden"></aside>
+
+  <script src="/ui/app.js"></script>
+</body>
+</html>
+
