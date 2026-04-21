@@ -1,9 +1,10 @@
-import hashlib
+﻿import hashlib
 import io
 import uuid
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.repositories.commit import CommitRepository
@@ -40,7 +41,6 @@ class CommitService:
                 }
             )
 
-        # Compare only active files in current project snapshot.
         existing_files = CommitRepository.get_files_by_project_id(self.db, project_id, active_only=True)
         existing_map = {self._join_file_path(f["path"], f"{f['name']}{f['file_format']}"): f for f in existing_files}
 
@@ -52,7 +52,6 @@ class CommitService:
         matched_uploaded_paths: set[str] = set()
         uploaded_by_path: dict[str, dict] = {}
 
-        # First pass: exact path/name matches.
         for file in files:
             full_path = self._join_file_path(file["path"], f"{file['name']}{file['file_format']}")
             zf = file_map.get(full_path)
@@ -76,7 +75,6 @@ class CommitService:
                 file["id"] = existing["file_id"]
                 changed_files.append(file)
 
-        # Second pass: detect rename-only cases by content hash.
         unmatched_existing = {k: v for k, v in existing_map.items() if k not in matched_existing_paths}
         unmatched_uploaded = {k: v for k, v in uploaded_by_path.items() if k not in matched_uploaded_paths}
 
@@ -95,7 +93,6 @@ class CommitService:
             else:
                 new_files.append(uploaded)
 
-        # Remaining unmatched existing entries are true deletions.
         for existing in unmatched_existing.values():
             if existing["file_id"] in consumed_existing_ids:
                 continue
@@ -133,6 +130,40 @@ class CommitService:
     def get_commits_by_project_id(self, project_id: uuid.UUID) -> list[dict]:
         return CommitRepository.get_commits_by_project_id(self.db, project_id)
 
+    def list_project_file_paths(self, project_id: uuid.UUID) -> list[str]:
+        files = CommitRepository.get_files_by_project_id(self.db, project_id, active_only=True)
+        out: list[str] = []
+        for file in files:
+            if not file.get("storage_key"):
+                continue
+            full_path = self._join_file_path(file["path"], f"{file['name']}{file['file_format']}")
+            normalized = self._normalize_relative_path(full_path)
+            if normalized:
+                out.append(normalized)
+        return sorted(dict.fromkeys(out))
+
+    def download_project_file_by_path(self, project_id: uuid.UUID, path: str) -> bytes:
+        requested = self._normalize_relative_path(path)
+        if not requested:
+            raise HTTPException(status_code=400, detail="path is required")
+
+        files = CommitRepository.get_files_by_project_id(self.db, project_id, active_only=True)
+        for file in files:
+            full_path = self._join_file_path(file["path"], f"{file['name']}{file['file_format']}")
+            if self._normalize_relative_path(full_path) != requested:
+                continue
+
+            storage_key = file.get("storage_key")
+            if not storage_key:
+                break
+
+            try:
+                return self.storage.get_file(storage_key)
+            except FileNotFoundError as exc:
+                raise HTTPException(status_code=404, detail=f"file not found: {requested}") from exc
+
+        raise HTTPException(status_code=404, detail=f"file not found: {requested}")
+
     def _commit_files(self, changed_files: list[dict], new_files: list[dict], deleted_files: list[dict], zip_obj: ZipFile) -> None:
         file_versions = CommitRepository.commit_files(self.db, changed_files, new_files, deleted_files)
         stored = self.storage.save_files(file_versions, zip_obj)
@@ -168,6 +199,16 @@ class CommitService:
         if not path or path == ".":
             return filename
         return f"{path.strip('/')}/{filename}".replace("\\", "/")
+
+    @staticmethod
+    def _normalize_relative_path(path: str) -> str:
+        text = str(path or "").replace("\\", "/").strip().lstrip("/")
+        if not text or text == ".":
+            return ""
+        parts = [part for part in text.split("/") if part and part != "."]
+        if any(part == ".." for part in parts):
+            raise HTTPException(status_code=400, detail="invalid path")
+        return "/".join(parts)
 
     @staticmethod
     def _calculate_file_hash(content: bytes) -> str:
