@@ -28,6 +28,7 @@ const state = {
   selectedProjectId: "",
   selectedFileVersionId: null,
   selectedVersionCommitId: null,
+  selectedFilePath: "",
   expandedFieldIds: new Set(),
   currentPath: "",
 };
@@ -87,6 +88,11 @@ function ensureSelectedVersionCommit() {
   return state.selectedVersionCommitId;
 }
 
+function ensureSelectedFilePath() {
+  if (!state.selectedFilePath) throw new Error("Select a file first.");
+  return state.selectedFilePath;
+}
+
 function selectedFieldName() {
   return state.fields.find((f) => f.id === state.selectedFieldId)?.name || "";
 }
@@ -126,6 +132,7 @@ function resetCommitVersions() {
 function resetFileVersions() {
   state.fileVersions = [];
   state.selectedFileVersionId = null;
+  state.selectedFilePath = "";
   renderFileVersions();
 }
 
@@ -213,6 +220,7 @@ function renderFiles() {
       tr.addEventListener("click", async () => {
         try {
           state.selectedFileVersionId = file.file_version_id;
+          state.selectedFilePath = state.currentPath ? `${state.currentPath}/${file.name}${file.file_format}` : `${file.name}${file.file_format}`;
           renderFiles();
           await loadFileVersions(file.file_version_id, true);
         } catch (error) {
@@ -390,6 +398,17 @@ async function deleteProject(projectId) {
   log(`Deleted project ${projectId}`);
 }
 
+async function deleteSelectedFile(projectId, path, message) {
+  const query = new URLSearchParams({ path });
+  if (message && message.trim()) query.set("message", message.trim());
+  await api(`/file/${projectId}?${query.toString()}`, { method: "DELETE" });
+  await browseFiles(projectId, state.currentPath || "");
+  await loadCommitVersions(projectId, true);
+  resetFileVersions();
+  showToast("File deleted");
+  log(`Deleted file ${path} from project ${projectId}`);
+}
+
 async function browseFiles(projectId, path = "") {
   const query = path ? `?path=${encodeURIComponent(path)}` : "";
   state.files = await api(`/file/${projectId}${query}`);
@@ -555,6 +574,21 @@ async function handleAction(action) {
         async (values) => uploadCommit(values.project_id, values.message),
       );
     };
+    return;
+  }
+
+  if (action === "delete-file") {
+    const projectId = ensureSelectedProject();
+    if (state.currentPath.startsWith("commit/")) throw new Error("File deletion is unavailable in commit snapshot view.");
+    const path = ensureSelectedFilePath();
+    openDialog(
+      "Delete File",
+      [
+        { name: "path", label: "File Path", required: true, value: path },
+        { name: "message", label: "Commit Message" },
+      ],
+      async (values) => deleteSelectedFile(projectId, values.path, values.message),
+    );
     return;
   }
 
