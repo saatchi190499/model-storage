@@ -75,3 +75,30 @@ class FileRepository:
         )
         rows = db.execute(query, {"file_version_id": file_version_id}).mappings().all()
         return [dict(row) for row in rows]
+
+    @staticmethod
+    def get_active_by_project_path_name(db: Session, project_id: UUID, path: str, name: str, file_format: str) -> dict | None:
+        query = text(
+            """
+            select f.id as file_id, f.project_id, f.name, f.file_format, f.path,
+                   fv.id as file_version_id, fv.hash
+            from files f
+            inner join file_versions fv on f.last_file_version_id = fv.id
+            where f.project_id = :project_id
+              and f.path = :path
+              and f.name = :name
+              and f.file_format = :file_format
+              and fv.is_deleted = false
+            limit 1
+            """
+        )
+        row = db.execute(
+            query,
+            {
+                "project_id": project_id,
+                "path": path,
+                "name": name,
+                "file_format": file_format,
+            },
+        ).mappings().first()
+        return dict(row) if row else None
