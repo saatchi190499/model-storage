@@ -43,3 +43,14 @@ def delete_file_from_project(
 ) -> MessageResponse:
     service.delete_file_from_project(project_id=project_id, path=path, message=message)
     return MessageResponse(message="the file was deleted successfully")
+
+
+@router.delete("/folder/{project_id}", response_model=MessageResponse)
+def delete_folder_from_project(
+    project_id: UUID,
+    path: str,
+    message: str = "",
+    service: FileService = Depends(get_file_service),
+) -> MessageResponse:
+    service.delete_folder_from_project(project_id=project_id, path=path, message=message)
+    return MessageResponse(message="the folder was deleted successfully")

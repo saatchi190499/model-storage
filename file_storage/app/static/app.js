@@ -409,6 +409,20 @@ async function deleteSelectedFile(projectId, path, message) {
   log(`Deleted file ${path} from project ${projectId}`);
 }
 
+async function deleteFolder(projectId, path, message) {
+  const query = new URLSearchParams({ path });
+  if (message && message.trim()) query.set("message", message.trim());
+  await api(`/file/folder/${projectId}?${query.toString()}`, { method: "DELETE" });
+  const parentIdx = path.lastIndexOf("/");
+  const fallbackPath = parentIdx >= 0 ? path.slice(0, parentIdx) : "";
+  const refreshPath = state.currentPath === path ? fallbackPath : state.currentPath;
+  await browseFiles(projectId, refreshPath || "");
+  await loadCommitVersions(projectId, true);
+  resetFileVersions();
+  showToast("Folder deleted");
+  log(`Deleted folder ${path} from project ${projectId}`);
+}
+
 async function browseFiles(projectId, path = "") {
   const query = path ? `?path=${encodeURIComponent(path)}` : "";
   state.files = await api(`/file/${projectId}${query}`);
@@ -588,6 +602,21 @@ async function handleAction(action) {
         { name: "message", label: "Commit Message" },
       ],
       async (values) => deleteSelectedFile(projectId, values.path, values.message),
+    );
+    return;
+  }
+
+  if (action === "delete-folder") {
+    const projectId = ensureSelectedProject();
+    if (state.currentPath.startsWith("commit/")) throw new Error("Folder deletion is unavailable in commit snapshot view.");
+    if (!state.currentPath) throw new Error("Open a folder first, then delete it.");
+    openDialog(
+      "Delete Folder",
+      [
+        { name: "path", label: "Folder Path", required: true, value: state.currentPath },
+        { name: "message", label: "Commit Message" },
+      ],
+      async (values) => deleteFolder(projectId, values.path, values.message),
     );
     return;
   }

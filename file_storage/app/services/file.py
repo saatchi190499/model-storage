@@ -54,6 +54,40 @@ class FileService:
         CommitRepository.update_commit(self.db, project_id, commit_id)
         self.db.commit()
 
+    def delete_folder_from_project(self, project_id: UUID, path: str, message: str) -> None:
+        normalized_path = self._normalize_relative_path(path)
+        if not normalized_path:
+            raise HTTPException(status_code=400, detail="folder path is required")
+
+        targets = FileRepository.list_active_by_project_folder_path(self.db, project_id, normalized_path)
+        if not targets:
+            raise HTTPException(status_code=404, detail=f"folder not found or empty: {normalized_path}")
+
+        commit_message = message.strip() if message.strip() else f"delete folder {normalized_path}"
+        commit_id = CommitRepository.create_commit(self.db, project_id, UUID(int=0), commit_message)
+
+        deleted_files = [
+            {
+                "id": target["file_id"],
+                "project_id": project_id,
+                "name": target["name"],
+                "file_format": target["file_format"],
+                "path": target["path"],
+                "last_file_version": {
+                    "is_deleted": True,
+                    "commit_id": commit_id,
+                    "file_size": 0,
+                    "hash": "",
+                },
+            }
+            for target in targets
+        ]
+
+        versions = CommitRepository.commit_files(self.db, changed_files=[], new_files=[], deleted_files=deleted_files)
+        CommitRepository.update_file_versions(self.db, versions)
+        CommitRepository.update_commit(self.db, project_id, commit_id)
+        self.db.commit()
+
     @staticmethod
     def _normalize_relative_path(path: str) -> str:
         text = str(path or "").replace("\\", "/").strip().lstrip("/")
