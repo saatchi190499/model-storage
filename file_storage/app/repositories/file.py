@@ -19,7 +19,9 @@ class FileRepository:
                         1
                     ) as name
                 from files f
+                left join file_versions fv on f.last_file_version_id = fv.id
                 where f.project_id = :project_id
+                  and fv.is_deleted = false
                   and f.path like case when :path = '' then '%' else :path || '/%' end
             ),
             files_in_folder as (
