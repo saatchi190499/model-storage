@@ -16,6 +16,8 @@ htmlcov/
 venv/
 
 # Environment and local config
+.env
+.env.*
 !.env.example
 
 # Logs and runtime files
@@ -32,3 +34,9 @@ data/
 tools/
 files/
 file_storage/files/
+
+# Runtime secrets and local key material
+*.pem
+*.key
+*.pfx
+*.p12

@@ -1,12 +1,13 @@
 ﻿import hashlib
-import io
+import tempfile
 import uuid
 from pathlib import Path
-from zipfile import ZIP_DEFLATED, ZipFile
+from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.repositories.commit import CommitRepository
 from app.storage.local_storage import LocalStorage
 
@@ -16,11 +17,19 @@ class CommitService:
         self.db = db
         self.storage = storage
 
-    def process_zip_file(self, project_id: uuid.UUID, zip_bytes: bytes, message: str, user_id: uuid.UUID) -> None:
-        commit_id = CommitRepository.create_commit(self.db, project_id, user_id, message)
+    def process_zip_file(self, project_id: uuid.UUID, zip_path: Path, message: str, user_id: uuid.UUID) -> None:
+        try:
+            zip_obj = ZipFile(zip_path)
+        except BadZipFile as exc:
+            raise HTTPException(status_code=400, detail="Uploaded file must be a valid ZIP archive") from exc
 
-        zip_obj = ZipFile(io.BytesIO(zip_bytes))
+        with zip_obj:
+            self._process_zip_archive(project_id, zip_obj, message, user_id)
+
+    def _process_zip_archive(self, project_id: uuid.UUID, zip_obj: ZipFile, message: str, user_id: uuid.UUID) -> None:
         file_map = self._normalized_zip_file_map(zip_obj)
+
+        commit_id = CommitRepository.create_commit(self.db, project_id, user_id, message)
 
         files: list[dict] = []
         for normalized_path in file_map:
@@ -58,7 +67,7 @@ class CommitService:
             if zf is None:
                 continue
             with zip_obj.open(zf) as handle:
-                file_hash = self._calculate_file_hash(handle.read())
+                file_hash = self._calculate_file_hash(handle)
 
             file["last_file_version"]["hash"] = file_hash
             file["last_file_version"]["is_deleted"] = False
@@ -119,13 +128,13 @@ class CommitService:
             CommitRepository.delete_commit(self.db, commit_id)
             self.db.commit()
 
-    def download_files_by_project_id(self, project_id: uuid.UUID) -> bytes:
+    def create_project_archive(self, project_id: uuid.UUID) -> Path:
         files = CommitRepository.get_files_by_project_id(self.db, project_id, active_only=True)
-        return self._build_zip(files)
+        return self._build_zip_file(files)
 
-    def download_files_at_commit(self, commit_id: int) -> bytes:
+    def create_commit_archive(self, commit_id: int) -> Path:
         files = CommitRepository.get_files_at_commit(self.db, commit_id)
-        return self._build_zip(files)
+        return self._build_zip_file(files)
 
     def get_commits_by_project_id(self, project_id: uuid.UUID) -> list[dict]:
         return CommitRepository.get_commits_by_project_id(self.db, project_id)
@@ -142,7 +151,7 @@ class CommitService:
                 out.append(normalized)
         return sorted(dict.fromkeys(out))
 
-    def download_project_file_by_path(self, project_id: uuid.UUID, path: str) -> bytes:
+    def get_project_file_path(self, project_id: uuid.UUID, path: str) -> tuple[Path, str]:
         requested = self._normalize_relative_path(path)
         if not requested:
             raise HTTPException(status_code=400, detail="path is required")
@@ -158,7 +167,7 @@ class CommitService:
                 break
 
             try:
-                return self.storage.get_file(storage_key)
+                return self.storage.get_file_path(storage_key), requested
             except FileNotFoundError as exc:
                 raise HTTPException(status_code=404, detail=f"file not found: {requested}") from exc
 
@@ -181,18 +190,35 @@ class CommitService:
 
         CommitRepository.update_commit(self.db, project_id, commit_id)
 
-    def _build_zip(self, files: list[dict]) -> bytes:
-        output = io.BytesIO()
-        with ZipFile(output, "w", compression=ZIP_DEFLATED) as archive:
-            for file in files:
-                storage_key = file.get("storage_key")
-                if not storage_key:
-                    continue
-                content = self.storage.get_file(storage_key)
-                zip_path = self._join_file_path(file["path"], f"{file['name']}{file['file_format']}")
-                archive.writestr(zip_path.lstrip("/"), content)
+    def _build_zip_file(self, files: list[dict]) -> Path:
+        temp_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp:
+                temp_path = Path(tmp.name)
 
-        return output.getvalue()
+            with ZipFile(temp_path, "w", compression=ZIP_DEFLATED) as archive:
+                self._write_files_to_archive(archive, files)
+
+            return temp_path
+        except Exception:
+            if temp_path and temp_path.exists():
+                temp_path.unlink(missing_ok=True)
+            raise
+
+    def _write_files_to_archive(self, archive: ZipFile, files: list[dict]) -> None:
+        for file in files:
+            storage_key = file.get("storage_key")
+            if not storage_key:
+                continue
+            zip_path = self._join_file_path(file["path"], f"{file['name']}{file['file_format']}")
+            normalized = self._normalize_relative_path(zip_path)
+            if not normalized:
+                continue
+            try:
+                storage_path = self.storage.get_file_path(storage_key)
+            except FileNotFoundError as exc:
+                raise HTTPException(status_code=404, detail=f"stored file missing: {normalized}") from exc
+            archive.write(storage_path, arcname=normalized)
 
     @staticmethod
     def _join_file_path(path: str, filename: str) -> str:
@@ -211,12 +237,32 @@ class CommitService:
         return "/".join(parts)
 
     @staticmethod
-    def _calculate_file_hash(content: bytes) -> str:
-        return hashlib.sha256(content).hexdigest()
+    def _calculate_file_hash(handle) -> str:
+        digest = hashlib.sha256()
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+        return digest.hexdigest()
 
     @staticmethod
     def _normalized_zip_file_map(zip_obj: ZipFile) -> dict[str, object]:
         entries = [item for item in zip_obj.infolist() if not item.is_dir()]
+        if not entries:
+            raise HTTPException(status_code=400, detail="ZIP archive does not contain files")
+        if len(entries) > settings.max_zip_files:
+            raise HTTPException(status_code=413, detail=f"ZIP contains more than {settings.max_zip_files} files")
+
+        total_uncompressed = sum(max(0, int(item.file_size or 0)) for item in entries)
+        if total_uncompressed > settings.max_zip_uncompressed_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail=f"ZIP uncompressed size exceeds {settings.max_zip_uncompressed_bytes} bytes",
+            )
+
+        for item in entries:
+            compressed_size = max(1, int(item.compress_size or 1))
+            if item.file_size / compressed_size > settings.max_zip_compression_ratio:
+                raise HTTPException(status_code=400, detail=f"Suspicious ZIP compression ratio for {item.filename}")
+
         raw_paths = [item.filename.replace("\\", "/").lstrip("/") for item in entries]
 
         top_level_parts = [path.split("/", 1)[0] for path in raw_paths if "/" in path]
@@ -230,7 +276,15 @@ class CommitService:
 
         normalized: dict[str, object] = {}
         for item in entries:
-            raw = item.filename.replace("\\", "/").lstrip("/")
+            raw_original = item.filename.replace("\\", "/")
+            if raw_original.startswith("/") or ":" in raw_original:
+                raise HTTPException(status_code=400, detail=f"Unsafe ZIP path: {item.filename}")
+            raw = raw_original.lstrip("/")
             clean = raw[len(strip_prefix):] if strip_prefix and raw.startswith(strip_prefix) else raw
+            clean = CommitService._normalize_relative_path(clean)
+            if not clean:
+                raise HTTPException(status_code=400, detail=f"Unsafe ZIP path: {item.filename}")
+            if clean in normalized:
+                raise HTTPException(status_code=400, detail=f"Duplicate ZIP path: {clean}")
             normalized[clean] = item
         return normalized

@@ -6,11 +6,31 @@ services:
     container_name: file-storage-api
     env_file:
       - .env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     ports:
       - "8080:8080"
     volumes:
       - file_data:/app/files
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/readyz', timeout=3).status==200 else 1)\""]
+      interval: 10s
+      timeout: 4s
+      retries: 12
+      start_period: 15s
     restart: unless-stopped
+    mem_limit: 1g
+    cpus: "1.00"
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    command: ["python", "scripts/migrate.py", "up"]
+    restart: "no"
 
 volumes:
   file_data:
