@@ -58,10 +58,12 @@ async def readyz() -> JSONResponse:
     checks: dict[str, object] = {}
     ok = True
 
-    if settings.api_key:
+    if settings.accepted_api_keys:
         checks["api_key"] = "ok"
+        checks["api_key_rotation"] = "grace" if len(settings.accepted_api_keys) > 1 else "single"
     else:
         checks["api_key"] = "missing"
+        checks["api_key_rotation"] = "invalid"
         ok = False
 
     checks["ui"] = "enabled" if settings.enable_ui else "disabled"

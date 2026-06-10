@@ -20,8 +20,8 @@ def _client_host(request: Request) -> str:
 
 
 def require_api_key(request: Request, x_api_key: str | None = Header(default=None)) -> None:
-    expected = settings.api_key.strip()
-    if not expected:
+    accepted = settings.accepted_api_keys
+    if not accepted:
         logger.error(
             "model_storage.auth.misconfigured path=%s method=%s client=%s",
             request.url.path,
@@ -32,7 +32,13 @@ def require_api_key(request: Request, x_api_key: str | None = Header(default=Non
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="FILE_STORAGE_API_KEY is not configured",
         )
-    if not x_api_key or not hmac.compare_digest(x_api_key, expected):
+
+    matches = False
+    if x_api_key:
+        # Always compare against every configured key so rotation state is not exposed by timing.
+        for expected in accepted:
+            matches = hmac.compare_digest(x_api_key, expected) or matches
+    if not matches:
         logger.warning(
             "model_storage.auth.denied path=%s method=%s client=%s has_key=%s",
             request.url.path,

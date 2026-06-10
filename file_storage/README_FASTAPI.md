@@ -43,6 +43,7 @@ python tasks.py migrate down --steps 1
 - File blobs are stored on local disk under `FILE_STORAGE_STORAGE_DIR`.
 - Production access mode is service-token-only. Direct browser/user access is not supported until a real user/project authorization model is added.
 - API routes require `X-API-Key: <FILE_STORAGE_API_KEY>`. The service fails closed with HTTP 503 if the key is not configured, and denied attempts are logged without recording the supplied key.
+- Safe rotation uses `FILE_STORAGE_PREVIOUS_API_KEY` only as a temporary grace credential. Set the new key as `FILE_STORAGE_API_KEY`, keep the old key as `FILE_STORAGE_PREVIOUS_API_KEY` while approved callers migrate, then remove the previous key after verification. The active key remains mandatory.
 - The static browser UI and FastAPI docs are disabled by default with `FILE_STORAGE_ENABLE_UI=false` and `FILE_STORAGE_ENABLE_API_DOCS=false`. If either is enabled for troubleshooting, expose it only through an admin VPN/internal allowlist and disable it again after use.
 - Keep model-storage on a private server/interface. Do not expose it directly to the internet or corporate LAN users; ProdCast should call it through the approved internal HTTPS URL with the service token.
 - ZIP commits are bounded by `FILE_STORAGE_MAX_UPLOAD_BYTES`, `FILE_STORAGE_MAX_ZIP_FILES`, `FILE_STORAGE_MAX_ZIP_UNCOMPRESSED_BYTES`, and `FILE_STORAGE_MAX_ZIP_COMPRESSION_RATIO`. Unsafe paths such as absolute paths, drive-letter paths, `..`, and duplicate normalized entries are rejected.

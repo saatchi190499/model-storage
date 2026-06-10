@@ -18,6 +18,7 @@ class Settings(BaseSettings):
 
     storage_dir: str = "./files"
     api_key: str = ""
+    previous_api_key: str = ""
     max_upload_bytes: int = 250 * 1024 * 1024
     max_zip_files: int = 5000
     max_zip_uncompressed_bytes: int = 2 * 1024 * 1024 * 1024
@@ -32,6 +33,17 @@ class Settings(BaseSettings):
             f"postgresql+psycopg2://{self.db_user}:{self.db_password}"
             f"@{self.db_host}:{self.db_port}/{self.db_name}?sslmode={self.db_ssl_mode}"
         )
+
+    @property
+    def accepted_api_keys(self) -> tuple[str, ...]:
+        active = self.api_key.strip()
+        if not active:
+            return ()
+
+        previous = self.previous_api_key.strip()
+        if previous and previous != active:
+            return active, previous
+        return (active,)
 
 
 settings = Settings()
