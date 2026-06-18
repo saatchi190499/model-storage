@@ -12,10 +12,10 @@ from app.api.routes.file import router as file_router
 from app.api.routes.project import router as project_router
 from app.api.deps import require_api_key
 from app.core.config import settings
-from app.core.log_redaction import install_log_redaction
+from app.core.structured_logging import configure_logging
 from app.db.session import engine
 
-install_log_redaction()
+configure_logging(settings)
 
 app = FastAPI(
     title=settings.app_name,

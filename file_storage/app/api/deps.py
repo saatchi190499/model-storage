@@ -23,10 +23,13 @@ def require_api_key(request: Request, x_api_key: str | None = Header(default=Non
     accepted = settings.accepted_api_keys
     if not accepted:
         logger.error(
-            "model_storage.auth.misconfigured path=%s method=%s client=%s",
-            request.url.path,
-            request.method,
-            _client_host(request),
+            "model-storage API key is not configured",
+            extra={
+                "event": "model_storage.auth.misconfigured",
+                "path": request.url.path,
+                "method": request.method,
+                "client": _client_host(request),
+            },
         )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -40,11 +43,14 @@ def require_api_key(request: Request, x_api_key: str | None = Header(default=Non
             matches = hmac.compare_digest(x_api_key, expected) or matches
     if not matches:
         logger.warning(
-            "model_storage.auth.denied path=%s method=%s client=%s has_key=%s",
-            request.url.path,
-            request.method,
-            _client_host(request),
-            bool(x_api_key),
+            "model-storage API key denied",
+            extra={
+                "event": "model_storage.auth.denied",
+                "path": request.url.path,
+                "method": request.method,
+                "client": _client_host(request),
+                "has_key": bool(x_api_key),
+            },
         )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
 

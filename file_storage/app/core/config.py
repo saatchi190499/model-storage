@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     stream_chunk_bytes: int = 1024 * 1024
     accel_redirect_enabled: bool = False
     accel_redirect_prefix: str = "/internal-model-storage/"
+    json_logs: bool = True
+    log_dir: str = "./logs"
+    log_level: str = "INFO"
+    log_max_bytes: int = 10 * 1024 * 1024
+    log_backup_count: int = 5
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="FILE_STORAGE_")
 
