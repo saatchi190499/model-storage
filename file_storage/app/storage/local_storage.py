@@ -1,6 +1,7 @@
 import shutil
 import tempfile
 from pathlib import Path
+from urllib.parse import quote
 from zipfile import ZipFile
 
 
@@ -20,6 +21,13 @@ class LocalStorage:
     def get_file(self, storage_key: str) -> bytes:
         path = self.get_file_path(storage_key)
         return path.read_bytes()
+
+    def get_accel_redirect_path(self, storage_key: str, prefix: str) -> str:
+        path = self.get_file_path(storage_key)
+        relative_path = path.relative_to(self.base_dir).as_posix()
+        prefix_text = str(prefix or "").strip("/")
+        normalized_prefix = f"/{prefix_text}/" if prefix_text else "/"
+        return normalized_prefix + quote(relative_path, safe="/")
 
     def delete_files(self, storage_keys: list[str]) -> None:
         for key in storage_keys:

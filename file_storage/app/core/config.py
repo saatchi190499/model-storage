@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     max_zip_uncompressed_bytes: int = 2 * 1024 * 1024 * 1024
     max_zip_compression_ratio: int = 100
     stream_chunk_bytes: int = 1024 * 1024
+    accel_redirect_enabled: bool = False
+    accel_redirect_prefix: str = "/internal-model-storage/"
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="FILE_STORAGE_")
 

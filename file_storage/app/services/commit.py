@@ -152,6 +152,10 @@ class CommitService:
         return sorted(dict.fromkeys(out))
 
     def get_project_file_path(self, project_id: uuid.UUID, path: str) -> tuple[Path, str]:
+        storage_path, download_path, _ = self.get_project_file_download(project_id, path)
+        return storage_path, download_path
+
+    def get_project_file_download(self, project_id: uuid.UUID, path: str) -> tuple[Path, str, str | None]:
         requested = self._normalize_relative_path(path)
         if not requested:
             raise HTTPException(status_code=400, detail="path is required")
@@ -167,7 +171,11 @@ class CommitService:
                 break
 
             try:
-                return self.storage.get_file_path(storage_key), requested
+                storage_path = self.storage.get_file_path(storage_key)
+                accel_path = None
+                if settings.accel_redirect_enabled:
+                    accel_path = self.storage.get_accel_redirect_path(storage_key, settings.accel_redirect_prefix)
+                return storage_path, requested, accel_path
             except FileNotFoundError as exc:
                 raise HTTPException(status_code=404, detail=f"file not found: {requested}") from exc
 

@@ -3,9 +3,10 @@
 import mimetypes
 import tempfile
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from starlette.background import BackgroundTask
 
 from app.api.deps import get_commit_service
@@ -49,6 +50,30 @@ def _delete_temp_file(path: Path) -> None:
     path.unlink(missing_ok=True)
 
 
+def _content_disposition(filename: str) -> str:
+    fallback = filename.replace("\\", "_").replace("/", "_").replace('"', "").replace("\r", "").replace("\n", "")
+    fallback = fallback.encode("ascii", "ignore").decode("ascii")
+    if not fallback:
+        fallback = "download"
+    return f"attachment; filename=\"{fallback}\"; filename*=UTF-8''{quote(filename)}"
+
+
+def _download_response(storage_path: Path, download_path: str, accel_redirect_path: str | None = None) -> Response:
+    media_type = mimetypes.guess_type(download_path)[0] or "application/octet-stream"
+    filename = Path(download_path).name
+    if accel_redirect_path:
+        return Response(
+            status_code=status.HTTP_200_OK,
+            media_type=media_type,
+            headers={
+                "X-Accel-Redirect": accel_redirect_path,
+                "Content-Disposition": _content_disposition(filename),
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+    return FileResponse(storage_path, media_type=media_type, filename=filename)
+
+
 @router.post("/commit/{project_id}", response_model=MessageResponse)
 async def commit_to_project(
     project_id: uuid.UUID,
@@ -77,10 +102,9 @@ def download_project_file_by_path(
     project_id: uuid.UUID,
     path: str,
     service: CommitService = Depends(get_commit_service),
-) -> FileResponse:
-    storage_path, download_path = service.get_project_file_path(project_id, path)
-    media_type = mimetypes.guess_type(download_path)[0] or "application/octet-stream"
-    return FileResponse(storage_path, media_type=media_type, filename=Path(download_path).name)
+) -> Response:
+    storage_path, download_path, accel_redirect_path = service.get_project_file_download(project_id, path)
+    return _download_response(storage_path, download_path, accel_redirect_path)
 
 
 @router.get("/{project_id:uuid}")
