@@ -6,7 +6,7 @@ services:
       api:
         condition: service_healthy
     ports:
-      - "${FILE_STORAGE_GATEWAY_BIND:-0.0.0.0}:${FILE_STORAGE_GATEWAY_PORT:-8080}:8080"
+      - "${FILE_STORAGE_GATEWAY_BIND:-127.0.0.1}:${FILE_STORAGE_GATEWAY_PORT:-8080}:8080"
     volumes:
       - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
       - file_data:/app/files:ro
