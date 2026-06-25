@@ -1,0 +1,25 @@
+services:
+  api:
+    build: .
+    container_name: file-storage-api
+    restart: unless-stopped
+    command: python -m uvicorn app.main:app --host 0.0.0.0 --port 8080
+    ports:
+      # Keep host port 80 free for Caddy/reverse proxy.
+      # Corporate users should access the app through:
+      #   http://model-storage.btl.nrg -> Caddy -> file-storage-api:8080
+      - "192.168.0.101:8080:8080"
+    expose:
+      - "8080"
+    dns:
+      # AdGuard Home DNS server used for internal btl.nrg names.
+      - 192.168.0.111
+    extra_hosts:
+      # Safety fallback if Docker DNS cannot resolve the internal DB hostname.
+      - "postgresql.btl.nrg:192.168.0.120"
+    networks:
+      - corpweb
+
+networks:
+  corpweb:
+    external: true
