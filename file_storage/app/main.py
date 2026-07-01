@@ -38,8 +38,8 @@ if settings.enable_ui:
     app.mount("/ui", StaticFiles(directory=static_dir, html=True), name="ui")
 
 
-@app.get("/")
-async def root_redirect() -> RedirectResponse | JSONResponse:
+@app.get("/", response_model=None)
+async def root_redirect():
     if settings.enable_ui:
         return RedirectResponse(url="/ui")
     return JSONResponse(
