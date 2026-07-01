@@ -1,6 +1,7 @@
-import os
 import shutil
+import tempfile
 from pathlib import Path
+from urllib.parse import quote
 from zipfile import ZipFile
 
 
@@ -9,21 +10,36 @@ class LocalStorage:
         self.base_dir = Path(base_dir).resolve()
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
-    def get_file(self, storage_key: str) -> bytes:
-        path = Path(storage_key)
+    def get_file_path(self, storage_key: str) -> Path:
+        path = self._resolve_storage_key(storage_key)
         if not path.exists():
             raise FileNotFoundError(f"file {storage_key} not found")
+        if not path.is_file():
+            raise FileNotFoundError(f"file {storage_key} not found")
+        return path
+
+    def get_file(self, storage_key: str) -> bytes:
+        path = self.get_file_path(storage_key)
         return path.read_bytes()
+
+    def get_accel_redirect_path(self, storage_key: str, prefix: str) -> str:
+        path = self.get_file_path(storage_key)
+        relative_path = path.relative_to(self.base_dir).as_posix()
+        prefix_text = str(prefix or "").strip("/")
+        normalized_prefix = f"/{prefix_text}/" if prefix_text else "/"
+        return normalized_prefix + quote(relative_path, safe="/")
 
     def delete_files(self, storage_keys: list[str]) -> None:
         for key in storage_keys:
             if not key:
                 continue
-            path = Path(key)
             try:
+                path = self._resolve_storage_key(key)
                 if path.exists() and path.is_file():
                     path.unlink()
             except OSError:
+                continue
+            except ValueError:
                 continue
 
     def delete_project_tree(self, project_id: str) -> None:
@@ -56,11 +72,22 @@ class LocalStorage:
                 raise KeyError(f"ZIP entry not found for normalized path '{full_path}'")
 
             with zip_file.open(entry) as source:
-                local_path.write_bytes(source.read())
+                with tempfile.NamedTemporaryFile(delete=False, dir=str(local_path.parent)) as tmp:
+                    shutil.copyfileobj(source, tmp, length=1024 * 1024)
+                    tmp_path = Path(tmp.name)
+                tmp_path.replace(local_path)
 
             files[idx]["storage_key"] = str(local_path)
 
         return files
+
+    def _resolve_storage_key(self, storage_key: str) -> Path:
+        path = Path(storage_key).resolve()
+        try:
+            path.relative_to(self.base_dir)
+        except ValueError as exc:
+            raise ValueError(f"storage key outside base directory: {storage_key}") from exc
+        return path
 
     @staticmethod
     def _normalized_zip_entries(zip_file: ZipFile) -> dict[str, object]:
@@ -80,5 +107,8 @@ class LocalStorage:
         for item in entries:
             raw = item.filename.replace("\\", "/").lstrip("/")
             clean = raw[len(strip_prefix):] if strip_prefix and raw.startswith(strip_prefix) else raw
+            parts = [part for part in clean.split("/") if part]
+            if not parts or any(part in {".", ".."} for part in parts) or ":" in clean:
+                continue
             normalized[clean] = item
         return normalized

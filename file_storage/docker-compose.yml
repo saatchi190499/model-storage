@@ -1,4 +1,25 @@
 services:
+  gateway:
+    image: nginx:1.27-alpine
+    container_name: file-storage-gateway
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${FILE_STORAGE_GATEWAY_BIND:-127.0.0.1}:${FILE_STORAGE_GATEWAY_PORT:-8080}:8080"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
+      - file_data:/app/files:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/readyz >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 4s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
+    mem_limit: 256m
+    cpus: "0.50"
+
   api:
     build:
       context: .
@@ -11,7 +32,26 @@ services:
       - "8080:8080"
     volumes:
       - file_data:/app/files
+      - file_storage_logs:/app/logs
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/readyz', timeout=3).status==200 else 1)\""]
+      interval: 10s
+      timeout: 4s
+      retries: 12
+      start_period: 15s
     restart: unless-stopped
+    mem_limit: 1g
+    cpus: "1.00"
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    command: ["python", "scripts/migrate.py", "up"]
+    restart: "no"
 
 volumes:
   file_data:
+  file_storage_logs:
