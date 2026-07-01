@@ -1,0 +1,3 @@
+http://model-storage.btl.nrg {
+    reverse_proxy file-storage:8080
+}

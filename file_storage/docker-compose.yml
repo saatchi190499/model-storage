@@ -27,12 +27,9 @@ services:
     container_name: file-storage-api
     env_file:
       - .env
-    environment:
-      FILE_STORAGE_ACCEL_REDIRECT_ENABLED: ${FILE_STORAGE_ACCEL_REDIRECT_ENABLED:-true}
-      FILE_STORAGE_ACCEL_REDIRECT_PREFIX: ${FILE_STORAGE_ACCEL_REDIRECT_PREFIX:-/internal-model-storage/}
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
+    ports:
+      - "80:8080"
+      - "8080:8080"
     volumes:
       - file_data:/app/files
       - file_storage_logs:/app/logs

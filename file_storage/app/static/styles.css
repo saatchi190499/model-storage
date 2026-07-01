@@ -139,6 +139,17 @@ body {
   background: linear-gradient(180deg, #f3fbff, #cfe8ff);
 }
 
+.mini-btn.danger {
+  border-color: #bf7b7b;
+  background: linear-gradient(180deg, #fff6f6, #ffdede);
+  color: #6c1f1f;
+}
+
+.mini-btn.danger:hover {
+  border-color: #b45050;
+  background: linear-gradient(180deg, #fff1f1, #ffcfcf);
+}
+
 .mini-btn-icon {
   width: 34px;
   min-width: 34px;
